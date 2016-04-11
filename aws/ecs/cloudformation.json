@@ -141,79 +141,6 @@
     }
   },
   "Resources": {
-    "EcsCluster": {
-      "Type": "AWS::ECS::Cluster"
-    },
-    "EcsBackendDataTask": {
-      "Condition": "DoDeployExampleApp",
-      "Type": "AWS::ECS::TaskDefinition",
-      "Properties": {
-        "ContainerDefinitions": [
-          {
-            "Essential": true,
-            "Name": "redis",
-            "Image": "redis",
-            "Cpu": 10,
-            "Memory": 300
-          }
-        ],
-        "Volumes": []
-      }
-    },
-    "EcsBackendDataService": {
-      "Condition": "DoDeployExampleApp",
-      "Type": "AWS::ECS::Service",
-      "Properties": {
-        "Cluster": {
-          "Ref": "EcsCluster"
-        },
-        "DesiredCount": 1,
-        "TaskDefinition": {
-          "Ref": "EcsBackendDataTask"
-        }
-      }
-    },
-    "EcsFrontendAppTask": {
-      "Condition": "DoDeployExampleApp",
-      "Type": "AWS::ECS::TaskDefinition",
-      "Properties": {
-        "ContainerDefinitions": [
-          {
-            "PortMappings": [
-              {
-                "HostPort": 80,
-                "ContainerPort": 5000
-              }
-            ],
-            "Essential": true,
-            "Name": "hit-counter",
-            "Image": "errordeveloper/hit-counter",
-            "Command": [
-              "python",
-              "app.py"
-            ],
-            "Cpu": 10,
-            "Memory": 300
-          }
-        ],
-        "Volumes": []
-      }
-    },
-    "EcsFrontendAppService": {
-      "Condition": "DoDeployExampleApp",
-      "Type": "AWS::ECS::Service",
-      "Properties": {
-        "Cluster": {
-          "Ref": "EcsCluster"
-        },
-        "DesiredCount": {
-          "Ref": "Scale"
-        },
-        "TaskDefinition": {
-          "Ref": "EcsFrontendAppTask"
-        }
-      }
-    },
     "Vpc": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
@@ -354,6 +281,18 @@
         "CidrIp": "0.0.0.0/0"
       }
     },
+    "EcsSecurityGroupIngressApp2Port": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "EcsSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "8080",
+        "ToPort": "8080",
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
     "EcsSecurityGroupIngressSshPort": {
       "Type": "AWS::EC2::SecurityGroupIngress",
       "Properties": {
@@ -418,6 +357,47 @@
         "SourceSecurityGroupId": {
           "Ref": "EcsSecurityGroup"
         }
+      }
+    },
+    "ECSServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "ecs-service",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "elasticloadbalancing:Describe*",
+                    "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                    "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                    "ec2:Describe*",
+                    "ec2:AuthorizeSecurityGroupIngress"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
       }
     },
     "EcsInstancePolicy": {
@@ -691,6 +671,113 @@
             "PropagateAtLaunch": "true"
           }
         ]
+      }
+    },
+    "EcsElasticLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties" : {
+        "Subnets" : [
+          { "Ref" : "PubSubnetAz1" },
+          { "Ref" : "PubSubnetAz2" }
+        ],
+        "Listeners" : [ {
+          "LoadBalancerPort" : "80",
+          "InstancePort" : "80",
+          "Protocol" : "HTTP"
+        } ],
+        "HealthCheck" : {
+          "Target" : "TCP:80",
+          "HealthyThreshold" : "2",
+          "UnhealthyThreshold" : "10",
+          "Interval" : "30",
+          "Timeout" : "5"
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "EcsSecurityGroup"
+          }
+        ]
+      }
+    },
+    "EcsCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+    "EcsBackendDataTask": {
+      "Condition": "DoDeployExampleApp",
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "Essential": true,
+            "Name": "redis",
+            "Image": "redis",
+            "Cpu": 10,
+            "Memory": 300
+          }
+        ],
+        "Volumes": []
+      }
+    },
+    "EcsBackendDataService": {
+      "Condition": "DoDeployExampleApp",
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster"
+        },
+        "DesiredCount": 1,
+        "TaskDefinition": {
+          "Ref": "EcsBackendDataTask"
+        }
+      }
+    },
+    "EcsFrontendAppTask": {
+      "Condition": "DoDeployExampleApp",
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "ContainerDefinitions": [
+          {
+            "PortMappings": [
+              {
+                "HostPort": 80,
+                "ContainerPort": 5000
+              }
+            ],
+            "Essential": true,
+            "Name": "hit-counter",
+            "Image": "dstroppa/hit-counter",
+            "Command": [
+              "python",
+              "app.py"
+            ],
+            "Cpu": 10,
+            "Memory": 300
+          }
+        ],
+        "Volumes": []
+      }
+    },
+    "EcsFrontendAppService": {
+      "Condition": "DoDeployExampleApp",
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {
+          "Ref": "EcsCluster"
+        },
+        "DesiredCount": {
+          "Ref": "Scale"
+        },
+        "TaskDefinition": {
+          "Ref": "EcsFrontendAppTask"
+        },
+        "LoadBalancers": [
+          {
+            "ContainerName": "hit-counter",
+            "ContainerPort": "5000",
+            "LoadBalancerName" : { "Ref" : "EcsElasticLoadBalancer" }
+          }
+        ],
+        "Role" : {"Ref":"ECSServiceRole"}
       }
     }
   }

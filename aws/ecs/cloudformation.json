@@ -81,10 +81,15 @@
       ],
       "ConstraintDescription": "must be a valid EC2 instance type."
     },
-    "Scale": {
+    "ClusterSize": {
       "Type": "Number",
       "Description": "Size of ECS cluster",
       "Default": "3"
+    },
+    "ServiceSize": {
+      "Type": "Number",
+      "Description": "Number of tasks in ECS service",
+      "Default": "1"
     },
     "KeyName": {
       "Type": "AWS::EC2::KeyPair::KeyName",
@@ -649,10 +654,10 @@
         },
         "MinSize": "1",
         "MaxSize": {
-          "Ref": "Scale"
+          "Ref": "ClusterSize"
         },
         "DesiredCapacity": {
-          "Ref": "Scale"
+          "Ref": "ClusterSize"
         },
         "Tags": [
           {
@@ -680,9 +685,37 @@
           { "Ref" : "PubSubnetAz1" },
           { "Ref" : "PubSubnetAz2" }
         ],
+        "ConnectionSettings": { "IdleTimeout" : 2},
         "Listeners" : [ {
           "LoadBalancerPort" : "80",
           "InstancePort" : "80",
+          "Protocol" : "HTTP"
+        } ],
+        "HealthCheck" : {
+          "Target" : "TCP:80",
+          "HealthyThreshold" : "2",
+          "UnhealthyThreshold" : "10",
+          "Interval" : "30",
+          "Timeout" : "5"
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "EcsSecurityGroup"
+          }
+        ]
+      }
+    },
+    "ShippableElasticLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties" : {
+        "Subnets" : [
+          { "Ref" : "PubSubnetAz1" },
+          { "Ref" : "PubSubnetAz2" }
+        ],
+        "ConnectionSettings": { "IdleTimeout" : 2},
+        "Listeners" : [ {
+          "LoadBalancerPort" : "80",
+          "InstancePort" : "8080",
           "Protocol" : "HTTP"
         } ],
         "HealthCheck" : {
@@ -745,7 +778,7 @@
             ],
             "Essential": true,
             "Name": "hit-counter",
-            "Image": "dstroppa/hit-counter",
+            "Image": "chavisb/hit-counter-gunicorn",
             "Command": [
               "python",
               "app.py"
@@ -765,7 +798,7 @@
           "Ref": "EcsCluster"
         },
         "DesiredCount": {
-          "Ref": "Scale"
+          "Ref": "ServiceSize"
         },
         "TaskDefinition": {
           "Ref": "EcsFrontendAppTask"
